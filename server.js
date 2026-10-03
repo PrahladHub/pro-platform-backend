@@ -7,40 +7,35 @@ const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const orderRoutes = require('./routes/orderRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
 
 const app = express();
 
-// CORS Configuration
+// CORS
 app.use(cors({
-  origin: [
-    'https://pro-platform-rho.vercel.app',
-    'http://localhost:5173',
-    'http://localhost:3000',
-  ],
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-store-slug'],
-  credentials: true,
+  credentials: false,
 }));
-
-// Handle preflight requests
-app.options(/.*/, cors());
 
 // Body parser
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// MongoDB Connection
+// MongoDB
 mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('✅ MongoDB Connected Successfully!'))
   .catch((err) => console.log('❌ MongoDB Error:', err.message));
 
-// API Routes
+// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
-// Test Route
+// Test route
 app.get('/', (req, res) => {
   res.json({
     message: 'Pro-Platform Backend API is running! 🚀',
@@ -50,11 +45,12 @@ app.get('/', (req, res) => {
       products: '/api/products',
       orders: '/api/orders',
       upload: '/api/upload',
+      subscriptions: '/api/subscriptions/plans',
     },
   });
 });
 
-// Start Server
+// Start
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
