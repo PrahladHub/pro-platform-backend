@@ -4,22 +4,18 @@ const router = express.Router();
 const Website = require('../models/Website');
 const { protect } = require('../middleware/auth');
 
-// =====================================================
-// HELPER: CREATE UNIQUE SLUG
-// =====================================================
 
+// ----------------------------------------
+// Create unique slug
+// ----------------------------------------
 const createUniqueSlug = async (name, providedSlug = '') => {
-  let baseSlug =
-    providedSlug ||
-    name
-      .toLowerCase()
+  const baseSlug =
+    (providedSlug || name || 'website')
+      .toString()
       .trim()
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '');
-
-  if (!baseSlug) {
-    baseSlug = 'my-website';
-  }
+      .replace(/^-+|-+$/g, '') || 'website';
 
   let slug = baseSlug;
   let counter = 1;
@@ -32,366 +28,345 @@ const createUniqueSlug = async (name, providedSlug = '') => {
   return slug;
 };
 
-// =====================================================
-// GET ALL WEBSITES
-// =====================================================
 
-router.get('/', protect, async (req, res) => {
+// ----------------------------------------
+// PUBLIC GET WEBSITE BY SLUG
+// ----------------------------------------
+// Used by public Storefront.
+// Only Published websites can be opened.
+// No login/token required.
+// ----------------------------------------
+router.get('/public/:slug', async (req, res) => {
   try {
-    const storeId = req.user.storeId;
+    const slug = req.params.slug
+      .toString()
+      .trim()
+      .toLowerCase();
 
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
+    const website = await Website.findOne({
+      slug,
+      status: 'Published',
+    }).select(
+      'name slug domain description category status design storeId'
+    );
+
+    if (!website) {
+      return res.status(404).json({
+        message: 'Published website not found',
       });
     }
 
-    const websites = await Website.find({
-      storeId,
-    }).sort({
-      createdAt: -1,
-    });
-
-    return res.status(200).json({
-      success: true,
-      count: websites.length,
-      websites,
+    res.json({
+      website,
     });
   } catch (error) {
-    console.error('Get websites error:', error);
+    console.error('Get public website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to load websites',
+    res.status(500).json({
+      message: 'Failed to fetch public website',
     });
   }
 });
 
-// =====================================================
-// CREATE WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// GET all websites
+// ----------------------------------------
+router.get('/', protect, async (req, res) => {
+  try {
+    const websites = await Website.find({
+      storeId: req.user.storeId,
+    }).sort({ createdAt: -1 });
+
+    res.json(websites);
+  } catch (error) {
+    console.error('Get websites error:', error);
+
+    res.status(500).json({
+      message: 'Failed to fetch websites',
+    });
+  }
+});
+
+
+// ----------------------------------------
+// CREATE website
+// ----------------------------------------
 router.post('/', protect, async (req, res) => {
   try {
     const {
       name,
+      slug,
       domain,
       description,
       category,
-      slug,
+      design,
     } = req.body;
-
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
 
     if (!name || !name.trim()) {
       return res.status(400).json({
-        success: false,
         message: 'Website name is required',
       });
     }
 
-    const websiteSlug = await createUniqueSlug(
-      name,
-      slug
-    );
+    const uniqueSlug = await createUniqueSlug(name, slug);
 
     const website = await Website.create({
       name: name.trim(),
-
-      domain: domain
-        ? domain.trim()
-        : '',
-
-      description: description
-        ? description.trim()
-        : '',
-
+      slug: uniqueSlug,
+      domain: domain || '',
+      description: description || '',
       category: category || 'E-commerce',
-
-      slug: websiteSlug,
-
-      storeId,
-
       status: 'Draft',
+      storeId: req.user.storeId,
+
+      // Design settings
+      design: {
+        primaryColor:
+          design?.primaryColor || '#4f46e5',
+
+        backgroundColor:
+          design?.backgroundColor || '#ffffff',
+
+        textColor:
+          design?.textColor || '#111827',
+
+        font:
+          design?.font || 'Inter',
+      },
 
       products: 0,
-
       orders: 0,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: 'Website created successfully',
-      website,
-    });
+    res.status(201).json(website);
   } catch (error) {
     console.error('Create website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to create website',
+    res.status(500).json({
+      message: 'Failed to create website',
+      error: error.message,
     });
   }
 });
 
-// =====================================================
-// GET SINGLE WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// GET single website
+// ----------------------------------------
 router.get('/:id', protect, async (req, res) => {
   try {
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
-
     const website = await Website.findOne({
       _id: req.params.id,
-      storeId,
+      storeId: req.user.storeId,
     });
 
     if (!website) {
       return res.status(404).json({
-        success: false,
         message: 'Website not found',
       });
     }
 
-    return res.status(200).json({
-      success: true,
-      website,
-    });
+    res.json(website);
   } catch (error) {
     console.error('Get website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to load website',
+    res.status(500).json({
+      message: 'Failed to fetch website',
     });
   }
 });
 
-// =====================================================
-// EDIT / UPDATE WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// UPDATE website
+// ----------------------------------------
 router.put('/:id', protect, async (req, res) => {
   try {
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
-
     const {
       name,
       domain,
       description,
       category,
+      design,
     } = req.body;
-
-    if (!name || !name.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: 'Website name is required',
-      });
-    }
 
     const website = await Website.findOne({
       _id: req.params.id,
-      storeId,
+      storeId: req.user.storeId,
     });
 
     if (!website) {
       return res.status(404).json({
-        success: false,
         message: 'Website not found',
       });
     }
 
-    website.name = name.trim();
 
-    website.domain = domain
-      ? domain.trim()
-      : '';
+    // Basic website information
+    if (name !== undefined) {
+      website.name = name.trim();
+    }
 
-    website.description = description
-      ? description.trim()
-      : '';
+    if (domain !== undefined) {
+      website.domain = domain;
+    }
 
-    website.category =
-      category || website.category;
+    if (description !== undefined) {
+      website.description = description;
+    }
+
+    if (category !== undefined) {
+      website.category = category;
+    }
+
+
+    // ----------------------------------------
+    // Design settings
+    // ----------------------------------------
+    if (design) {
+      if (design.primaryColor !== undefined) {
+        website.design.primaryColor =
+          design.primaryColor;
+      }
+
+      if (design.backgroundColor !== undefined) {
+        website.design.backgroundColor =
+          design.backgroundColor;
+      }
+
+      if (design.textColor !== undefined) {
+        website.design.textColor =
+          design.textColor;
+      }
+
+      if (design.font !== undefined) {
+        website.design.font =
+          design.font;
+      }
+    }
+
 
     await website.save();
 
-    return res.status(200).json({
-      success: true,
+    res.json({
       message: 'Website updated successfully',
       website,
     });
   } catch (error) {
     console.error('Update website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to update website',
+    res.status(500).json({
+      message: 'Failed to update website',
+      error: error.message,
     });
   }
 });
 
-// =====================================================
-// PUBLISH WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// PUBLISH website
+// ----------------------------------------
 router.put('/:id/publish', protect, async (req, res) => {
   try {
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
-
-    const website = await Website.findOne({
-      _id: req.params.id,
-      storeId,
-    });
+    const website = await Website.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        storeId: req.user.storeId,
+      },
+      {
+        status: 'Published',
+      },
+      {
+        new: true,
+      }
+    );
 
     if (!website) {
       return res.status(404).json({
-        success: false,
         message: 'Website not found',
       });
     }
 
-    website.status = 'Published';
-
-    await website.save();
-
-    return res.status(200).json({
-      success: true,
+    res.json({
       message: 'Website published successfully',
       website,
     });
   } catch (error) {
     console.error('Publish website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to publish website',
+    res.status(500).json({
+      message: 'Failed to publish website',
     });
   }
 });
 
-// =====================================================
-// UNPUBLISH WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// UNPUBLISH website
+// ----------------------------------------
 router.put('/:id/unpublish', protect, async (req, res) => {
   try {
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
-
-    const website = await Website.findOne({
-      _id: req.params.id,
-      storeId,
-    });
+    const website = await Website.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        storeId: req.user.storeId,
+      },
+      {
+        status: 'Draft',
+      },
+      {
+        new: true,
+      }
+    );
 
     if (!website) {
       return res.status(404).json({
-        success: false,
         message: 'Website not found',
       });
     }
 
-    website.status = 'Draft';
-
-    await website.save();
-
-    return res.status(200).json({
-      success: true,
+    res.json({
       message: 'Website unpublished successfully',
       website,
     });
   } catch (error) {
     console.error('Unpublish website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message || 'Failed to unpublish website',
+    res.status(500).json({
+      message: 'Failed to unpublish website',
     });
   }
 });
 
-// =====================================================
-// DELETE WEBSITE
-// =====================================================
 
+// ----------------------------------------
+// DELETE website
+// ----------------------------------------
 router.delete('/:id', protect, async (req, res) => {
   try {
-    const storeId = req.user.storeId;
-
-    if (!storeId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No store found for this user',
-      });
-    }
-
-    const website = await Website.findOne({
+    const result = await Website.deleteOne({
       _id: req.params.id,
-      storeId,
+      storeId: req.user.storeId,
     });
 
-    if (!website) {
+    if (result.deletedCount === 0) {
       return res.status(404).json({
-        success: false,
         message: 'Website not found',
       });
     }
 
-    await Website.deleteOne({
-      _id: req.params.id,
-      storeId,
-    });
-
-    return res.status(200).json({
-      success: true,
+    res.json({
       message: 'Website deleted successfully',
     });
   } catch (error) {
     console.error('Delete website error:', error);
 
-    return res.status(500).json({
-      success: false,
-      message:
-        error.message || 'Failed to delete website',
+    res.status(500).json({
+      message: 'Failed to delete website',
     });
   }
 });
+
 
 module.exports = router;
