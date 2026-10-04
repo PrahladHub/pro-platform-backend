@@ -18,7 +18,7 @@ const protect = async (req, res, next) => {
 };
 
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.isAdmin) {
+  if (req.user && req.user.role === 'admin') {   // ← YE SAHI HAI
     next();
   } else {
     res.status(403).json({ error: 'Admin access required' });

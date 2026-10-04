@@ -15,8 +15,8 @@ const { protect, adminOnly } = require('../middleware/auth');
 router.get('/plans', getPlans);
 
 // User routes
-router.get('/current', protect, adminOnly, getCurrentSubscription);
-router.get('/my', protect, adminOnly, getMySubscriptions);
+router.get('/current', protect, getCurrentSubscription);
+router.get('/my', protect, getMySubscriptions);
 router.post('/submit', protect, adminOnly, submitPayment);
 
 // Platform admin routes

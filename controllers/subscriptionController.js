@@ -32,37 +32,48 @@ exports.getCurrentSubscription = async (req, res) => {
 
 // @desc    Submit payment (user clicks "I've paid")
 // @route   POST /api/subscriptions/submit
+// ===== SUBMIT PAYMENT =====
 exports.submitPayment = async (req, res) => {
   try {
-    const { plan, transactionId, screenshot } = req.body;
+    console.log('SUBMIT BODY:', req.body);
+    console.log('SUBMIT FILE:', req.file);
+    console.log('SUBMIT USER:', req.user);
 
-    if (!plans[plan]) {
-      return res.status(400).json({ message: 'Invalid plan' });
+    const { planId, planName, amount } = req.body;
+
+    if (!planId) {
+      return res.status(400).json({ success: false, message: 'planId zaroori hai' });
     }
 
-    const store = await Store.findById(req.user.storeId);
+    // Screenshot URL from upload middleware (agar cloudinary use kiya)
+    const screenshotUrl = req.file ? req.file.path : (req.body.screenshot || '');
+
+    const Subscription = require('../models/Subscription');
 
     const subscription = await Subscription.create({
-      storeId: store._id,
-      userId: req.user._id,
-      plan,
-      amount: plans[plan].price,
-      paymentMethod: 'upi',
-      transactionId: transactionId || '',
-      screenshot: screenshot || '',
+      user: req.user ? req.user._id : null,
+      userName: req.user ? req.user.name : 'Unknown',
+      userEmail: req.user ? req.user.email : '',
+      planId,
+      planName: planName || planId,
+      amount: Number(amount) || 0,
+      screenshot: screenshotUrl,
       status: 'pending',
     });
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'Payment submitted for verification. We will activate your plan soon.',
+      message: 'Payment proof submit ho gaya! Admin approve karega.',
       subscription,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error('submitPayment ERROR:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
-
 // @desc    Get my subscriptions
 // @route   GET /api/subscriptions/my
 exports.getMySubscriptions = async (req, res) => {
